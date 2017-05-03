@@ -100,14 +100,39 @@ namespace UnitTesting
         }
 
         [TestMethod]
-        public void PropertyGreaterThanOrEqualVariable()
+        public void PropertyGreaterThanOrEqualObjectMethod()
         {
             //Arrange
-            int minUps = IntVal();
+            testClass c = new testClass() ;
 
             Expression<Func<CloudSearchFilter, bool>>
-                expression = x => !(x.ups >= minUps);
-            string expected = $"(not+ups:{minUps}..)";
+                expression = x => !(x.ups >= c.method(5));
+            string expected = $"(not+ups:{c.method(5)}..)";
+
+            //Act
+            string actual = CloudSearchFilter.Filter(expression);
+
+            //Assert
+            Assert.AreEqual(expected, actual);
+        }
+
+
+        [TestMethod]
+        public void IntBetweenObjectFieldAndStaticMethod()
+        {
+            //Arrange
+            testClass c = new testClass() { field = IntVal() * 100 };
+
+            
+            Expression<Func<CloudSearchFilter, bool>>
+                expression = x => ( x.ups <= c.field &&  x.ups >= IntVal());
+
+            //Would prefer the more condense output but wanted the more intutive 
+            // comparision syntax to also be suppored.  One alternative is
+            // to do something like the implementation for timestamp()
+            //string expected = $"(ups:{minUps}..{maxUps})";
+            string expected = $"(and+ups:..{c.field}+ups:{IntVal()}..)";
+            
 
             //Act
             string actual = CloudSearchFilter.Filter(expression);
@@ -193,13 +218,47 @@ namespace UnitTesting
         }
 
         [TestMethod]
-        public void Or_AndTest()
+        public void NotEqualStringTest()
         {
             //Arrange
             string name = CloudSearchTest.NameVal();
             Expression<Func<CloudSearchFilter, bool>>
-                expression = x => x.subreddit == name || x.title == "'title'" && x.flair_text == "'flair text'";
-            string expected = $"(or+subreddit:{name}+(and+title:'title'+flair_text:'flair text'))";
+                expression = x => x.subreddit != "'title'";
+            string expected = $"(subreddit:'-title'";
+
+
+            //Act
+            string actual = CloudSearchFilter.Filter(expression);
+
+            //Assert
+            Assert.AreEqual(expected, actual);
+        }
+
+        [TestMethod]
+        public void NotEqualNumericTest()
+        {
+            //Arrange
+            string name = CloudSearchTest.NameVal();
+            Expression<Func<CloudSearchFilter, bool>>
+                expression = x => x.ups != 5;
+            string expected = $"(NOT ups:5..5)";
+
+
+            //Act
+            string actual = CloudSearchFilter.Filter(expression);
+
+            //Assert
+            Assert.AreEqual(expected, actual);
+        }
+
+        [TestMethod]
+        public void Or_AndTest()
+        {
+            //Arrange
+            
+            Expression<Func<CloudSearchFilter, bool>>
+                expression = x => x.subreddit == CloudSearchTest.NameVal() || x.title == "'title'" && x.flair_text == "'flair text'";
+            string expected = $"(or+subreddit:{CloudSearchTest.NameVal()}+(and+title:'title'+flair_text:'flair text'))";
 
 
             //Act
@@ -220,7 +279,7 @@ namespace UnitTesting
             DateTimeOffset startOffset = new DateTimeOffset(start);
             Expression<Func<CloudSearchFilter, bool>>
                 expression = x => (x.timestamp(start, end) || x.subreddit == name || (x.title == "title" && ((x.flair_text == "govt" && x.ups > 4) || (x.ups > 5 && x.flair_text == "news"))));
-            string expected = $"(or+timestamp:{startOffset.ToUnixTimeSeconds()}..{endOffset.ToUnixTimeSeconds()}+subreddit:{name}+(and+title:title+(or+(and+flair_text:govt+ups:5..)+(and+ups:5..+flair_text:news))))";
+            string expected = $"(or+timestamp:{startOffset.ToUnixTimeSeconds()}..{endOffset.ToUnixTimeSeconds()}+subreddit:{name}+(and+title:title+(or+(and+flair_text:govt+ups:5..)+(and+ups:6..+flair_text:news))))";
             //%28or+timestamp:1483257600..1488355200+subreddit:%27SeattleWA%27+%28and+title:%27title%27+%28or+%28and+flair_text:%27govt%27+ups:5..%29+%28and+ups:5..+flair_text:%27news%27%29%29%29%29
             //Act
             string actual = CloudSearchFilter.Filter(expression);
@@ -230,29 +289,20 @@ namespace UnitTesting
         }
 
 
-        //[TestMethod]
-        //public void TestMethod1()
-        //{
-        //    DateTime dt = new DateTime(2017, 1, 1);
-        //    DateTime dt2 = new DateTime(2017, 3, 1);
-        //    string f = CloudSearchTest.NameVal();
-        //    int u = IntVal();
-        //    CloudSearchFilter.Filter(
-        //        x => !(x.ups > u),
-        //        //x=>true, 
-        //        x => !x.over18, //try negation too
-        //        x => x.subreddit == f || x.Title == "'title'" && x.flair_text == "'flair text'",
-        //        //x => (x.Timestamp > dt && x.Timestamp < dt2) || x.subreddit == f || (x.Title == "title" && ((x.flair_text == "govt" && x.ups > 4) || (x.ups > 5 && x.flair_text == "news")))
-        //        x => x.TimestampFilter(null, DateTime.Now)
-        //        );
-        //}
-        private static string NameVal()
+
+        private static string NameVal() => "'SeattleWA'";
+        
+        private static int IntVal() => 4;
+        
+        private static DateTime? DatetimeVal() => new DateTime(2017, 1, 1);
+    }
+
+    public class testClass
+    {
+        public int field;
+        public int method(int parameter)
         {
-            return "'SeattleWA'";
-        }
-        private static int IntVal()
-        {
-            return 4;
+            return parameter;
         }
     }
 }

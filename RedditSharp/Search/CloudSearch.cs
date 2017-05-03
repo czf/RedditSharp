@@ -33,10 +33,13 @@ namespace RedditSharp.Search
         public int ups;
         public bool over18;
 
+        
+
         public bool timestamp(DateTime? from, DateTime? end)
         {
             return true;
         }
+        
 
         public class UtcDateRange
         {
@@ -72,8 +75,8 @@ namespace RedditSharp.Search
         
         public static string FilterHelper(UnaryExpression expression)
         {
-            if(expression.NodeType != ExpressionType.Not)
-            { throw new NotSupportedException("Only supports UnaryExpression for 'Not'"); }
+            //if(expression.NodeType != ExpressionType.Not)
+            //{ throw new NotSupportedException("Only supports UnaryExpression for 'Not'"); }
 
             string result = string.Empty;
 
@@ -101,34 +104,75 @@ namespace RedditSharp.Search
             ExpressionType.Or
         };
 
+
+
         public static string FilterHelper(BinaryExpression expression)
         {
             string op = expression.NodeType.ToOperator();
             string l = null;
             string r = null;
+            
             if (conditionalTypes.Any(x => x == expression.NodeType))
             {
-                
+
                 if (expression.NodeType == expression.Left.NodeType)
                 {
-                    BinaryExpression left =  expression.Left as BinaryExpression;
-                    l = FilterCallbinder(left.Left) + "+" + FilterCallbinder(left.Right);
+                    BinaryExpression leftExpression = expression.Left as BinaryExpression;
+                    l = FilterCallbinder(leftExpression.Left) + "+" + FilterCallbinder(leftExpression.Right);
                 }
 
                 if (expression.NodeType == expression.Right.NodeType)
                 {
-                    BinaryExpression right = expression.Left as BinaryExpression;
-                    r = FilterCallbinder(right.Left) + "+" + FilterCallbinder(right.Right);
+                    BinaryExpression rightExpression = expression.Left as BinaryExpression;
+                    r = FilterCallbinder(rightExpression.Left) + "+" + FilterCallbinder(rightExpression.Right);
                 }
-                
-
             }
-         
+            else if (expression.NodeType == ExpressionType.NotEqual)
+            {
+                //NotEqualHandler();
+            }
 
-            return string.Format(op, l ?? FilterCallbinder(expression.Left),
-                r ?? FilterCallbinder(expression.Right));
+
+            string left = l ?? FilterCallbinder(expression.Left);
+            string right = r ?? FilterCallbinder(expression.Right);
+
+            left = AdjustForRange(expression.NodeType, left, true);
+            right = AdjustForRange(expression.NodeType, right, false);
+
+
+            return string.Format(op, left, right);
             
         }
+
+
+        private static string AdjustForRange(ExpressionType expressionType, string element, bool isLeft)
+        {
+            string result = element;
+            int output = 0;
+            if ((expressionType == ExpressionType.GreaterThan || expressionType == ExpressionType.NotEqual) &&
+                int.TryParse(element, out output))
+            {
+                if(isLeft && expressionType == ExpressionType.GreaterThan)
+                {
+                    result = (output - 1).ToString();
+                }
+                else if (isLeft && expressionType == ExpressionType.LessThan)
+                {
+                    result = (output + 1).ToString();
+                }
+                else if (!isLeft && expressionType == ExpressionType.GreaterThan)
+                {
+                    result = (output + 1).ToString();
+                }
+                else if (!isLeft && expressionType == ExpressionType.LessThan)
+                {
+                    result = (output - 1).ToString();
+                }
+
+            }
+            return result;
+        }
+
 
         private static string FilterHelper(MethodCallExpression call)
         {
@@ -139,7 +183,13 @@ namespace RedditSharp.Search
             {
                 from = FilterCallbinder(call.Arguments[0]);
                 end = FilterCallbinder(call.Arguments[1]);
+                
+
                 result = $"timestamp:{from}..{end}";
+            }
+            else
+            {
+                result = call.InvokeGet().ToString();
             }
 
             return result;
@@ -162,14 +212,27 @@ namespace RedditSharp.Search
             {
                 result = $"{member.Member.Name}:{(filterValue ? "1": "0")}";
             }
-             else if (member.Member.DeclaringType != typeof(CloudSearchFilter))
+            
+            else if (member.Member.DeclaringType != typeof(CloudSearchFilter))
             {
-                result = member.InvokeGet().ToString();
+                object data = member.InvokeGet();
+
+                if (data is DateTime)
+                {
+                    DateTimeOffset offset = new DateTimeOffset((DateTime)data);
+                    result = offset.ToUnixTimeSeconds().ToString();
+                }
+                else
+                {
+                    result = data.ToString();
+                }
+                
             }
-            else if(member.Expression is ConstantExpression)
-            {
-                result = FilterHelper(member.Expression as ConstantExpression);
-            }
+            //else if(member.Expression is ConstantExpression)
+            //{
+               
+            //    //result = FilterHelper(member.Expression as ConstantExpression);
+            //}
            
             else
             {
@@ -268,13 +331,23 @@ namespace RedditSharp.Search
         /// </remarks>
         public static object InvokeGet(this MemberExpression member)
         {
-            var objectMember = Expression.Convert(member, typeof(object));
+            return InvokeGet(member as Expression);
+        }
+
+        private static object InvokeGet(Expression expression)
+        {
+            var objectMember = Expression.Convert(expression, typeof(object));
 
             var getterLambda = Expression.Lambda<Func<object>>(objectMember);
 
             var getter = getterLambda.Compile();
 
             return getter();
+        }
+
+        public static object InvokeGet(this MethodCallExpression call)
+        {
+            return InvokeGet(call as Expression);
         }
     }
 }
