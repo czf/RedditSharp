@@ -9,21 +9,14 @@ namespace RedditSharp.Search
 {
     /// <summary>
     /// https://github.com/reddit/reddit/blob/master/r2/r2/lib/providers/search/common.py
+    /// http://awsdocs.s3.amazonaws.com/cloudsearch/2011-02-01/cloudsearch-dg-2011-02-01.pdf
+    /// https://www.reddit.com/search?q=%28and+subreddit:%27SeattleWA%27+flair_text:%27government%27+ups:5..%29&sort=top&syntax=cloudsearch
+    /// https://www.reddit.com/search?q=%28and+subreddit%3A%27seattle%27+%28not+is_self%3A1%29+ups%3A5..+ups%3A..20%29&sort=top&syntax=cloudsearch
+    /// https://www.reddit.com/r/MusicGuides/search?rank=title&q=ups%3A{1,3}+is_self%3A1&restrict_sr=on&syntax=cloudsearch
+    /// https://www.reddit.com/r/MusicGuides/search?rank=title&q=is_self%3A1&restrict_sr=on&syntax=cloudsearch
+    /// 
+    /// NOTE int ranges are <intfIeld>:<lowerbound>..<upperbound> not the bracket syntax that AWS docs list
     /// </summary>
-    public interface ICloudSearchFilter
-    {
-        CompoundSearchOperator GetCompoundSearchOperator();
-
-        ICloudSearchFilter AddAndFilter(ICloudSearchFilter filter);
-        ICloudSearchFilter AddOrFilter(ICloudSearchFilter filter);
-
-        ICloudSearchFilter AddUtcDateRange(DateTime from, DateTime to);
-        ICloudSearchFilter AddUtcDateRanges(IEnumerable<CloudSearchFilter.UtcDateRange> utcDateRanges);
-
-        ICloudSearchFilter Over18(bool over18);
-        //ICloudSearchFilter
-    }
-
     public class CloudSearchFilter
     {
         public string title;
@@ -40,25 +33,6 @@ namespace RedditSharp.Search
             return true;
         }
         
-
-        public class UtcDateRange
-        {
-            private UtcDateRange() { }
-            //public DateTime From { get; set; }
-            //public DateTime To { get; set; }
-            public bool Between(DateTime? from, DateTime? end)
-            {
-                return true;
-            }
-            //public static bool operator ==(DateTime filter, UtcDateRange dateRange)
-            //{
-            //    return true;
-            //}
-            //public static bool operator !=(DateTime filter, UtcDateRange dateRange)
-            //{
-            //    return true;
-            //}
-        }
         public static string Filter(Expression<Func<CloudSearchFilter, bool>> expression)
         {
             var x = FilterCallbinder(expression.Body);
@@ -87,13 +61,16 @@ namespace RedditSharp.Search
             }
             else
             {
-                string op = expression.NodeType.ToOperator();
+                string op = expression.ToOperator(false);
 
                 result = string.Format(op, FilterCallbinder(expression.Operand));
             }
             return result;
+        }
 
-
+        public static string FilterHelper(ConditionalExpression expression)
+        {
+            return expression.InvokeGet().ToString(); 
         }
 
         private static readonly List<ExpressionType> conditionalTypes = new List<ExpressionType>()
@@ -104,11 +81,19 @@ namespace RedditSharp.Search
             ExpressionType.Or
         };
 
-
+        private static readonly List<ExpressionType> evaluateExpressions = new List<ExpressionType>()
+        {
+            ExpressionType.Add,
+            ExpressionType.Subtract,
+            ExpressionType.Multiply,
+            ExpressionType.Divide,
+            ExpressionType.Coalesce,
+            ExpressionType.Conditional
+        };
 
         public static string FilterHelper(BinaryExpression expression)
         {
-            string op = expression.NodeType.ToOperator();
+            string op = null;
             string l = null;
             string r = null;
             
@@ -127,29 +112,54 @@ namespace RedditSharp.Search
                     r = FilterCallbinder(rightExpression.Left) + "+" + FilterCallbinder(rightExpression.Right);
                 }
             }
+            else if (evaluateExpressions.Any(x=> x == expression.NodeType))
+            {
+                op = expression.ToOperator(false);
+                return expression.InvokeGet().ToString();
+            }
             else if (expression.NodeType == ExpressionType.NotEqual)
             {
                 //NotEqualHandler();
             }
-
-
+            bool isCorrectOrder = IsCorrectOrder(expression);
+            op = op ?? expression.ToOperator(isCorrectOrder);
             string left = l ?? FilterCallbinder(expression.Left);
             string right = r ?? FilterCallbinder(expression.Right);
 
             left = AdjustForRange(expression.NodeType, left, true);
             right = AdjustForRange(expression.NodeType, right, false);
 
+            if (!isCorrectOrder)
+            {
+                string temp = null;
+                temp = left;
+                left = right;
+                right = temp;
+            }
 
             return string.Format(op, left, right);
             
         }
 
+        private static bool IsCorrectOrder(BinaryExpression expression)
+        {
+            MemberExpression member = expression.Left as MemberExpression;
+            bool leftIsSearchProperty = member != null && (member.Member.DeclaringType == typeof(CloudSearchFilter));
+            bool rightIsSearchProperty = false;
+            if(!leftIsSearchProperty)
+            {
+                member = expression.Right as MemberExpression;
+                rightIsSearchProperty = member != null && (member.Member.DeclaringType == typeof(CloudSearchFilter));
+            }
+            return leftIsSearchProperty || (!leftIsSearchProperty && !rightIsSearchProperty);
+
+        }
 
         private static string AdjustForRange(ExpressionType expressionType, string element, bool isLeft)
         {
             string result = element;
             int output = 0;
-            if ((expressionType == ExpressionType.GreaterThan || expressionType == ExpressionType.NotEqual) &&
+            if (
                 int.TryParse(element, out output))
             {
                 if(isLeft && expressionType == ExpressionType.GreaterThan)
@@ -256,18 +266,11 @@ namespace RedditSharp.Search
         }
 
     }
-
-    public enum CompoundSearchOperator
-    {
-        None,
-        And,
-        Or
-
-    }
     public static class Extensions
     {
-        public static string ToOperator(this ExpressionType type)
+        public static string ToOperator(this Expression expression, bool isCorrectOrder)
         {
+            ExpressionType? type = expression?.NodeType;
             string result = string.Empty;
             switch (type)
             {
@@ -278,22 +281,26 @@ namespace RedditSharp.Search
                     break;
                 case ExpressionType.Conditional:
                     break;
+                case ExpressionType.Coalesce:
                 case ExpressionType.Equal:
                     result = "{0}:{1}";
                     break;
                 case ExpressionType.ExclusiveOr:
                     break;
                 case ExpressionType.GreaterThan:
-                    result = "{0}:{1}.."; // extra processing needed to adjust
-                    break;
                 case ExpressionType.GreaterThanOrEqual:
-                    result = "{0}:{1}..";
+                    if (isCorrectOrder)
+                    { result = "{0}:{1}.."; }
+                    else
+                    { result = "{0}:..{1}"; }
                     break;
                 case ExpressionType.LessThan:
-                    result = "{0}:..{1}"; // extra processing needed to adjust
-                    break;
                 case ExpressionType.LessThanOrEqual:
-                    result = "{0}:..{1}";  
+                    if (isCorrectOrder)
+                    { result = "{0}:..{1}"; }
+                    else
+                    { result = "{0}:{1}.."; }
+
                     break;
                 case ExpressionType.MemberAccess:
                     break;
@@ -305,6 +312,16 @@ namespace RedditSharp.Search
                     result = "(not+{0})";
                     break;
                 case ExpressionType.NotEqual:
+                    BinaryExpression ex = expression as BinaryExpression;
+
+                    if( ex.Left.Type == typeof(string) || ex.Right.Type == typeof(string) )
+                    {
+                        result = "{0}:'-{1}'";
+                    }
+                    else
+                    {
+                        result = "(NOT+{0}:{1})";
+                    }
                     break;
                 case ExpressionType.Or:
                     break;
@@ -321,6 +338,12 @@ namespace RedditSharp.Search
             return result;
         }
 
+        
+        public static object InvokeGet(this MemberExpression member)
+        {
+            return InvokeGetExpression(member);
+        }
+
         /// <summary>
         /// 
         /// </summary>
@@ -329,12 +352,7 @@ namespace RedditSharp.Search
         /// <remarks>
         /// source : http://stackoverflow.com/a/2616980
         /// </remarks>
-        public static object InvokeGet(this MemberExpression member)
-        {
-            return InvokeGet(member as Expression);
-        }
-
-        private static object InvokeGet(Expression expression)
+        private static object InvokeGetExpression(Expression expression)
         {
             var objectMember = Expression.Convert(expression, typeof(object));
 
@@ -347,7 +365,17 @@ namespace RedditSharp.Search
 
         public static object InvokeGet(this MethodCallExpression call)
         {
-            return InvokeGet(call as Expression);
+            return InvokeGetExpression(call);
+        }
+
+        public static object InvokeGet(this BinaryExpression expression)
+        {
+            return InvokeGetExpression(expression);
+        }
+
+        public static object InvokeGet(this ConditionalExpression expression)
+        {
+            return InvokeGetExpression(expression);
         }
     }
 }

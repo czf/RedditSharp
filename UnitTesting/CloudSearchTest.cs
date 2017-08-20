@@ -100,6 +100,23 @@ namespace UnitTesting
         }
 
         [TestMethod]
+        public void PropertyGreaterThanVariable2()
+        {
+            //Arrange
+            int minUps = IntVal();
+
+            Expression<Func<CloudSearchFilter, bool>>
+                expression = x => !( minUps < x.ups);
+            string expected = $"(not+ups:{minUps + 1}..)";
+
+            //Act
+            string actual = CloudSearchFilter.Filter(expression);
+
+            //Assert
+            Assert.AreEqual(expected, actual);
+        }
+
+        [TestMethod]
         public void PropertyGreaterThanOrEqualObjectMethod()
         {
             //Arrange
@@ -145,10 +162,10 @@ namespace UnitTesting
         public void TimestampEndOnlyTest()
         {
             //Arrange
-            DateTime end = new DateTime(2017, 3, 1);
-            DateTimeOffset endOffset = new DateTimeOffset(end);
+            DateTime[] end = new DateTime[] { new DateTime(2017, 3, 1) };
+            DateTimeOffset endOffset = new DateTimeOffset(end.First());
             Expression<Func<CloudSearchFilter, bool>>
-                expression = x => x.timestamp(null, end);
+                expression = x => x.timestamp(null, end.First());
             string expected = $"timestamp:..{endOffset.ToUnixTimeSeconds()}";
 
 
@@ -206,8 +223,8 @@ namespace UnitTesting
             //Arrange
             string name = CloudSearchTest.NameVal();
             Expression<Func<CloudSearchFilter, bool>>
-                expression = x => x.subreddit == name || x.title == "'title'" || x.flair_text == "'flair text'";
-            string expected = $"(or+subreddit:{name}+title:'title'+flair_text:'flair text')";
+                expression = x => x.subreddit == name || x.title == (name == null ? "'title'" : name) || x.flair_text == "'flair text'";
+            string expected = $"(or+subreddit:{name}+title:{name}+flair_text:'flair text')";
 
 
             //Act
@@ -223,8 +240,24 @@ namespace UnitTesting
             //Arrange
             string name = CloudSearchTest.NameVal();
             Expression<Func<CloudSearchFilter, bool>>
-                expression = x => x.subreddit != "'title'";
-            string expected = $"(subreddit:'-title'";
+                expression = x => x.subreddit != name;
+            string expected = $"subreddit:'-{name}'";
+
+
+            //Act
+            string actual = CloudSearchFilter.Filter(expression);
+
+            //Assert
+            Assert.AreEqual(expected, actual);
+        }
+        [TestMethod]
+        public void NotEqualStringTest2()
+        {
+            //Arrange
+            string name = CloudSearchTest.NameVal();
+            Expression<Func<CloudSearchFilter, bool>>
+                expression = x => name != x.subreddit;
+            string expected = $"subreddit:'-{name}'";
 
 
             //Act
@@ -235,13 +268,63 @@ namespace UnitTesting
         }
 
         [TestMethod]
-        public void NotEqualNumericTest()
+        public void AddtionTest()
         {
             //Arrange
-            string name = CloudSearchTest.NameVal();
+            int val = 4;
             Expression<Func<CloudSearchFilter, bool>>
-                expression = x => x.ups != 5;
-            string expected = $"(NOT ups:5..5)";
+                expression = x => x.ups == val + 4;
+            string expected = $"ups:{val+4}";
+
+            //Act
+            string actual = CloudSearchFilter.Filter(expression);
+
+            //Asset
+            Assert.AreEqual(expected, actual);
+        }
+
+        [TestMethod]
+        public void AddtionTest2()
+        {
+            //Arrange
+            int val = 4;
+            Expression<Func<CloudSearchFilter, bool>>
+                expression = x => val + 4 == x.ups;
+            string expected = $"ups:{val + 4}";
+
+            //Act
+            string actual = CloudSearchFilter.Filter(expression);
+
+            //Asset
+            Assert.AreEqual(expected, actual);
+        }
+
+
+        [TestMethod]
+        public void NotEqualNumericCoalesceTest()
+        {
+            //Arrange
+            int? val = null;
+            Expression<Func<CloudSearchFilter, bool>>
+                expression = x => x.ups != (val ?? 5);
+            string expected = $"(NOT+ups:5)";
+
+
+            //Act
+            string actual = CloudSearchFilter.Filter(expression);
+
+            //Assert
+            Assert.AreEqual(expected, actual);
+        }
+
+        [TestMethod]
+        public void NotEqualNumericCoalesceTest2()
+        {
+            //Arrange
+            int? val = null;
+            Expression<Func<CloudSearchFilter, bool>>
+                expression = x =>  (val ?? 5) != x.ups;
+            string expected = $"(NOT+ups:5)";
 
 
             //Act
