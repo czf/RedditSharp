@@ -17,62 +17,43 @@ namespace RedditSharp.Search
     /// 
     /// NOTE int ranges are <intfIeld>:<lowerbound>..<upperbound> not the bracket syntax that AWS docs list
     /// </summary>
-    public class CloudSearchFilter
+    public class SimpleCloudSearchFilter
     {
         public string title;
         public string subreddit;
         public string flair_text;
+        public string author;
         
         public int ups;
         public bool over18;
 
         
-
-        public bool timestamp(DateTime? from, DateTime? end)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="from"></param>
+        /// <param name="end"></param>
+        /// <returns></returns>
+        public bool timestamp(DateTimeOffset? from, DateTimeOffset? end)
         {
             return true;
         }
         
-        public static string Filter(Expression<Func<CloudSearchFilter, bool>> expression)
+        public static string Filter(Expression<Func<SimpleCloudSearchFilter, bool>> expression)
         {
-            var x = FilterCallbinder(expression.Body);
+            var x = FilterCallBinder(expression.Body);
 
             return x;
         }
-        public static string Filter(Expression<Func<CloudSearchFilter, bool>> expression, Expression<Func<CloudSearchFilter, bool>> expression2, Expression<Func<CloudSearchFilter, bool>> expression3, Expression<Func<CloudSearchFilter, bool>> expression4)
+        public static string Filter(Expression<Func<SimpleCloudSearchFilter, bool>> expression, Expression<Func<SimpleCloudSearchFilter, bool>> expression2, Expression<Func<SimpleCloudSearchFilter, bool>> expression3, Expression<Func<SimpleCloudSearchFilter, bool>> expression4)
         {
-            var x = FilterCallbinder(expression4.Body);
+            var x = FilterCallBinder(expression4.Body);
 
             return x;
         }
         
         
-        public static string FilterHelper(UnaryExpression expression)
-        {
-            //if(expression.NodeType != ExpressionType.Not)
-            //{ throw new NotSupportedException("Only supports UnaryExpression for 'Not'"); }
-
-            string result = string.Empty;
-
-            if(expression.Operand.NodeType == ExpressionType.MemberAccess)
-            {
-                MemberExpression member = expression.Operand as MemberExpression;
-                result = GetMemberFilter(member, false);
-            }
-            else
-            {
-                string op = expression.ToOperator(false);
-
-                result = string.Format(op, FilterCallbinder(expression.Operand));
-            }
-            return result;
-        }
-
-        public static string FilterHelper(ConditionalExpression expression)
-        {
-            return expression.InvokeGet().ToString(); 
-        }
-
+        
         private static readonly List<ExpressionType> conditionalTypes = new List<ExpressionType>()
         {
             ExpressionType.AndAlso,
@@ -91,7 +72,35 @@ namespace RedditSharp.Search
             ExpressionType.Conditional
         };
 
-        public static string FilterHelper(BinaryExpression expression)
+
+        private static string FilterHelper(UnaryExpression expression, bool allowNull = false)
+        {
+            //if(expression.NodeType != ExpressionType.Not)
+            //{ throw new NotSupportedException("Only supports UnaryExpression for 'Not'"); }
+
+            string result = string.Empty;
+
+            if (expression.Operand.NodeType == ExpressionType.MemberAccess)
+            {
+                MemberExpression member = expression.Operand as MemberExpression;
+                result = GetMemberFilter(member, false);
+            }
+            else
+            {
+                string op = expression.ToOperator(false);
+
+                result = string.Format(op, FilterCallBinder(expression.Operand));
+            }
+            return result;
+        }
+
+        private static string FilterHelper(ConditionalExpression expression, bool allowNull = false)
+        {
+            return expression.InvokeGet()?.ToString();
+        }
+
+
+        private static string FilterHelper(BinaryExpression expression, bool allowNull = false)
         {
             string op = null;
             string l = null;
@@ -103,19 +112,24 @@ namespace RedditSharp.Search
                 if (expression.NodeType == expression.Left.NodeType)
                 {
                     BinaryExpression leftExpression = expression.Left as BinaryExpression;
-                    l = FilterCallbinder(leftExpression.Left) + "+" + FilterCallbinder(leftExpression.Right);
+                    l = FilterCallBinder(leftExpression.Left) + "+" + FilterCallBinder(leftExpression.Right);
                 }
 
                 if (expression.NodeType == expression.Right.NodeType)
                 {
                     BinaryExpression rightExpression = expression.Left as BinaryExpression;
-                    r = FilterCallbinder(rightExpression.Left) + "+" + FilterCallbinder(rightExpression.Right);
+                    r = FilterCallBinder(rightExpression.Left) + "+" + FilterCallBinder(rightExpression.Right);
                 }
             }
             else if (evaluateExpressions.Any(x=> x == expression.NodeType))
             {
                 op = expression.ToOperator(false);
-                return expression.InvokeGet().ToString();
+                string result = expression.InvokeGet()?.ToString();
+                if (result == null && !allowNull)
+                {
+                    throw new NullReferenceException();
+                }
+                return result;
             }
             else if (expression.NodeType == ExpressionType.NotEqual)
             {
@@ -123,8 +137,8 @@ namespace RedditSharp.Search
             }
             bool isCorrectOrder = IsCorrectOrder(expression);
             op = op ?? expression.ToOperator(isCorrectOrder);
-            string left = l ?? FilterCallbinder(expression.Left);
-            string right = r ?? FilterCallbinder(expression.Right);
+            string left = l ?? FilterCallBinder(expression.Left);
+            string right = r ?? FilterCallBinder(expression.Right);
 
             left = AdjustForRange(expression.NodeType, left, true);
             right = AdjustForRange(expression.NodeType, right, false);
@@ -141,15 +155,62 @@ namespace RedditSharp.Search
             
         }
 
+        private static string FilterHelper(MethodCallExpression call, bool allowNull = false)
+        {
+            string from = null;
+            string end = null;
+            string result = string.Empty;
+            if(call.Method.Name == nameof(SimpleCloudSearchFilter.timestamp))
+            {
+                from = FilterCallBinder(call.Arguments[0], true);
+                end = FilterCallBinder(call.Arguments[1], true);
+                
+
+                result = $"timestamp:{from}..{end}";
+            }
+            else
+            {
+                result = call.InvokeGet()?.ToString();
+                if(result == null && !allowNull)
+                {
+                    throw new NullReferenceException();
+                }
+            }
+
+            return result;
+
+        }
+        
+        private static string FilterHelper(MemberExpression member, bool allowNull = false)
+        {
+            string result = string.Empty;
+            result = GetMemberFilter(member,true);
+
+            return result;
+        }
+
+        private static string FilterHelper(ConstantExpression constant, bool allowNull = false)
+        {
+
+            return constant.Value.ToString();
+        }
+
+        // using dynamic to hack late binding so i don't have to 
+        // write a bunch of "if is type then cast and call cases".
+        private static string FilterCallBinder(dynamic expression, bool allowNull = false)
+        {
+            return FilterHelper(expression, allowNull);
+        }
+
         private static bool IsCorrectOrder(BinaryExpression expression)
         {
             MemberExpression member = expression.Left as MemberExpression;
-            bool leftIsSearchProperty = member != null && (member.Member.DeclaringType == typeof(CloudSearchFilter));
+            bool leftIsSearchProperty = member != null && (member.Member.DeclaringType == typeof(SimpleCloudSearchFilter));
             bool rightIsSearchProperty = false;
-            if(!leftIsSearchProperty)
+            if (!leftIsSearchProperty)
             {
                 member = expression.Right as MemberExpression;
-                rightIsSearchProperty = member != null && (member.Member.DeclaringType == typeof(CloudSearchFilter));
+                rightIsSearchProperty = member != null && (member.Member.DeclaringType == typeof(SimpleCloudSearchFilter));
             }
             return leftIsSearchProperty || (!leftIsSearchProperty && !rightIsSearchProperty);
 
@@ -162,7 +223,7 @@ namespace RedditSharp.Search
             if (
                 int.TryParse(element, out output))
             {
-                if(isLeft && expressionType == ExpressionType.GreaterThan)
+                if (isLeft && expressionType == ExpressionType.GreaterThan)
                 {
                     result = (output - 1).ToString();
                 }
@@ -183,67 +244,30 @@ namespace RedditSharp.Search
             return result;
         }
 
-
-        private static string FilterHelper(MethodCallExpression call)
-        {
-            string from = null;
-            string end = null;
-            string result = string.Empty;
-            if(call.Method.Name == nameof(CloudSearchFilter.timestamp))
-            {
-                from = FilterCallbinder(call.Arguments[0]);
-                end = FilterCallbinder(call.Arguments[1]);
-                
-
-                result = $"timestamp:{from}..{end}";
-            }
-            else
-            {
-                result = call.InvokeGet().ToString();
-            }
-
-            return result;
-
-        }
-        
-        public static string FilterHelper(MemberExpression member)
-        {
-            string result = string.Empty;
-            result = GetMemberFilter(member,true);
-
-            return result;
-        }
-
         private static string GetMemberFilter(MemberExpression member, bool filterValue)
         {
             string result;
-            
+
             if (member.Type == typeof(bool))
             {
-                result = $"{member.Member.Name}:{(filterValue ? "1": "0")}";
+                result = $"{member.Member.Name}:{(filterValue ? "1" : "0")}";
             }
-            
-            else if (member.Member.DeclaringType != typeof(CloudSearchFilter))
+
+            else if (member.Member.DeclaringType != typeof(SimpleCloudSearchFilter))
             {
                 object data = member.InvokeGet();
 
-                if (data is DateTime)
+                if (data is DateTimeOffset)
                 {
-                    DateTimeOffset offset = new DateTimeOffset((DateTime)data);
-                    result = offset.ToUnixTimeSeconds().ToString();
+                    DateTimeOffset? offset = data as DateTimeOffset?;
+                    result = offset?.ToUnixTimeSeconds().ToString();
                 }
                 else
                 {
-                    result = data.ToString();
+                    result = data?.ToString();
                 }
-                
+
             }
-            //else if(member.Expression is ConstantExpression)
-            //{
-               
-            //    //result = FilterHelper(member.Expression as ConstantExpression);
-            //}
-           
             else
             {
                 result = member.Member.Name;
@@ -252,18 +276,6 @@ namespace RedditSharp.Search
             return result;
         }
 
-        public static string FilterHelper(ConstantExpression constant)
-        {
-
-            return constant.Value.ToString();
-        }
-
-        // using dynamic to hack late binding so i don't have to 
-        // write a bunch of "if is type then cast and call cases".
-        private static string FilterCallbinder(dynamic expression)
-        {
-            return FilterHelper(expression);
-        }
 
     }
     public static class Extensions
@@ -338,12 +350,6 @@ namespace RedditSharp.Search
             return result;
         }
 
-        
-        public static object InvokeGet(this MemberExpression member)
-        {
-            return InvokeGetExpression(member);
-        }
-
         /// <summary>
         /// 
         /// </summary>
@@ -376,6 +382,11 @@ namespace RedditSharp.Search
         public static object InvokeGet(this ConditionalExpression expression)
         {
             return InvokeGetExpression(expression);
+        }
+
+        public static object InvokeGet(this MemberExpression member)
+        {
+            return InvokeGetExpression(member);
         }
     }
 }
