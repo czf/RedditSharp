@@ -3,9 +3,6 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
 using RedditSharp.Things;
 using RedditSharp;
-using System.Net;
-using UnitTesting.TestData;
-using System.IO;
 using Newtonsoft.Json.Linq;
 using System.Linq;
 using System.Linq.Expressions;
@@ -16,14 +13,10 @@ namespace UnitTesting
     /// Summary description for CloudSearchTest
     /// </summary>
     [TestClass]
-    public class CloudSearchTest
+    public class SimpleCloudSearchTest
     {
-        public CloudSearchTest()
-        {
-            //
-            // TODO: Add constructor logic here
-            //
-        }
+        public SimpleCloudSearchTest()
+        {        }
 
         private TestContext testContextInstance;
 
@@ -70,13 +63,13 @@ namespace UnitTesting
         public void BoolPropertyTest()
         {
             //Arrange
-            Expression<Func<CloudSearchFilter, bool>> 
+            Expression<Func<SimpleCloudSearchFilter, bool>> 
                 expression = x => !x.over18;
             string expected = "over18:0";
             
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -88,12 +81,12 @@ namespace UnitTesting
             //Arrange
             int minUps = IntVal();
 
-            Expression<Func<CloudSearchFilter, bool>>
+            Expression<Func<SimpleCloudSearchFilter, bool>>
                 expression = x => !(x.ups > minUps);
             string expected = $"(not+ups:{minUps+1}..)";
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -105,12 +98,12 @@ namespace UnitTesting
             //Arrange
             int minUps = IntVal();
 
-            Expression<Func<CloudSearchFilter, bool>>
+            Expression<Func<SimpleCloudSearchFilter, bool>>
                 expression = x => !( minUps < x.ups);
             string expected = $"(not+ups:{minUps + 1}..)";
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -122,12 +115,12 @@ namespace UnitTesting
             //Arrange
             testClass c = new testClass() ;
 
-            Expression<Func<CloudSearchFilter, bool>>
+            Expression<Func<SimpleCloudSearchFilter, bool>>
                 expression = x => !(x.ups >= c.method(5));
             string expected = $"(not+ups:{c.method(5)}..)";
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -141,7 +134,7 @@ namespace UnitTesting
             testClass c = new testClass() { field = IntVal() * 100 };
 
             
-            Expression<Func<CloudSearchFilter, bool>>
+            Expression<Func<SimpleCloudSearchFilter, bool>>
                 expression = x => ( x.ups <= c.field &&  x.ups >= IntVal());
 
             //Would prefer the more condense output but wanted the more intutive 
@@ -152,7 +145,7 @@ namespace UnitTesting
             
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -164,13 +157,13 @@ namespace UnitTesting
             //Arrange
             DateTime[] end = new DateTime[] { new DateTime(2017, 3, 1) };
             DateTimeOffset endOffset = new DateTimeOffset(end.First());
-            Expression<Func<CloudSearchFilter, bool>>
-                expression = x => x.timestamp(null, end.First());
+            Expression<Func<SimpleCloudSearchFilter, bool>>
+                expression = x => x.timestamp(DateTimeOffsetNullVal(), endOffset);
             string expected = $"timestamp:..{endOffset.ToUnixTimeSeconds()}";
 
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -183,13 +176,18 @@ namespace UnitTesting
             //Arrange
             DateTime start = new DateTime(2017, 1, 1);
             DateTimeOffset startOffset = new DateTimeOffset(start);
-            Expression<Func<CloudSearchFilter, bool>>
-                expression = x => x.timestamp(start, null);
+            testClass test = new testClass()
+            {
+                DtoField = startOffset
+            };
+            testClass testNull = new testClass();
+            Expression<Func<SimpleCloudSearchFilter, bool>>
+                expression = x => x.timestamp(test.DtoField, testNull.DtoField);
             string expected = $"timestamp:{startOffset.ToUnixTimeSeconds()}..";
 
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -205,13 +203,13 @@ namespace UnitTesting
             DateTime end = new DateTime(2017, 3, 1);
             DateTimeOffset endOffset = new DateTimeOffset(end);
             DateTimeOffset startOffset = new DateTimeOffset(start);
-            Expression<Func<CloudSearchFilter, bool>>
-                expression = x => x.timestamp(start, end);
+            Expression<Func<SimpleCloudSearchFilter, bool>>
+                expression = x => x.timestamp(startOffset, endOffset);
             string expected = $"timestamp:{startOffset.ToUnixTimeSeconds()}..{endOffset.ToUnixTimeSeconds()}";
 
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -221,14 +219,14 @@ namespace UnitTesting
         public void OrTest()
         {
             //Arrange
-            string name = CloudSearchTest.NameVal();
-            Expression<Func<CloudSearchFilter, bool>>
+            string name = SimpleCloudSearchTest.NameVal();
+            Expression<Func<SimpleCloudSearchFilter, bool>>
                 expression = x => x.subreddit == name || x.title == (name == null ? "'title'" : name) || x.flair_text == "'flair text'";
             string expected = $"(or+subreddit:{name}+title:{name}+flair_text:'flair text')";
 
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -238,14 +236,14 @@ namespace UnitTesting
         public void NotEqualStringTest()
         {
             //Arrange
-            string name = CloudSearchTest.NameVal();
-            Expression<Func<CloudSearchFilter, bool>>
+            string name = SimpleCloudSearchTest.NameVal();
+            Expression<Func<SimpleCloudSearchFilter, bool>>
                 expression = x => x.subreddit != name;
             string expected = $"subreddit:'-{name}'";
 
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -254,14 +252,14 @@ namespace UnitTesting
         public void NotEqualStringTest2()
         {
             //Arrange
-            string name = CloudSearchTest.NameVal();
-            Expression<Func<CloudSearchFilter, bool>>
+            string name = SimpleCloudSearchTest.NameVal();
+            Expression<Func<SimpleCloudSearchFilter, bool>>
                 expression = x => name != x.subreddit;
             string expected = $"subreddit:'-{name}'";
 
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -272,12 +270,12 @@ namespace UnitTesting
         {
             //Arrange
             int val = 4;
-            Expression<Func<CloudSearchFilter, bool>>
+            Expression<Func<SimpleCloudSearchFilter, bool>>
                 expression = x => x.ups == val + 4;
             string expected = $"ups:{val+4}";
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Asset
             Assert.AreEqual(expected, actual);
@@ -288,12 +286,12 @@ namespace UnitTesting
         {
             //Arrange
             int val = 4;
-            Expression<Func<CloudSearchFilter, bool>>
+            Expression<Func<SimpleCloudSearchFilter, bool>>
                 expression = x => val + 4 == x.ups;
             string expected = $"ups:{val + 4}";
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Asset
             Assert.AreEqual(expected, actual);
@@ -305,13 +303,13 @@ namespace UnitTesting
         {
             //Arrange
             int? val = null;
-            Expression<Func<CloudSearchFilter, bool>>
+            Expression<Func<SimpleCloudSearchFilter, bool>>
                 expression = x => x.ups != (val ?? 5);
             string expected = $"(NOT+ups:5)";
 
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -322,13 +320,13 @@ namespace UnitTesting
         {
             //Arrange
             int? val = null;
-            Expression<Func<CloudSearchFilter, bool>>
+            Expression<Func<SimpleCloudSearchFilter, bool>>
                 expression = x =>  (val ?? 5) != x.ups;
             string expected = $"(NOT+ups:5)";
 
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -339,13 +337,13 @@ namespace UnitTesting
         {
             //Arrange
             
-            Expression<Func<CloudSearchFilter, bool>>
-                expression = x => x.subreddit == CloudSearchTest.NameVal() || x.title == "'title'" && x.flair_text == "'flair text'";
-            string expected = $"(or+subreddit:{CloudSearchTest.NameVal()}+(and+title:'title'+flair_text:'flair text'))";
+            Expression<Func<SimpleCloudSearchFilter, bool>>
+                expression = x => x.subreddit == SimpleCloudSearchTest.NameVal() || x.title == "'title'" && x.flair_text == "'flair text'";
+            string expected = $"(or+subreddit:{SimpleCloudSearchTest.NameVal()}+(and+title:'title'+flair_text:'flair text'))";
 
 
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
@@ -355,33 +353,36 @@ namespace UnitTesting
         public void CompoundConditionTest()
         {
             //Arrange
-            string name = CloudSearchTest.NameVal();
+            string name = SimpleCloudSearchTest.NameVal();
             DateTime start = new DateTime(2017, 1, 1);
             DateTime end = new DateTime(2017, 3, 1);
             DateTimeOffset endOffset = new DateTimeOffset(end);
             DateTimeOffset startOffset = new DateTimeOffset(start);
-            Expression<Func<CloudSearchFilter, bool>>
-                expression = x => (x.timestamp(start, end) || x.subreddit == name || (x.title == "title" && ((x.flair_text == "govt" && x.ups > 4) || (x.ups > 5 && x.flair_text == "news"))));
+            Expression<Func<SimpleCloudSearchFilter, bool>>
+                expression = x => (x.timestamp(startOffset, endOffset) || x.subreddit == name || (x.title == "title" && ((x.flair_text == "govt" && x.ups > 4) || (x.ups > 5 && x.flair_text == "news"))));
             string expected = $"(or+timestamp:{startOffset.ToUnixTimeSeconds()}..{endOffset.ToUnixTimeSeconds()}+subreddit:{name}+(and+title:title+(or+(and+flair_text:govt+ups:5..)+(and+ups:6..+flair_text:news))))";
             //%28or+timestamp:1483257600..1488355200+subreddit:%27SeattleWA%27+%28and+title:%27title%27+%28or+%28and+flair_text:%27govt%27+ups:5..%29+%28and+ups:5..+flair_text:%27news%27%29%29%29%29
             //Act
-            string actual = CloudSearchFilter.Filter(expression);
+            string actual = SimpleCloudSearchFilter.Filter(expression);
 
             //Assert
             Assert.AreEqual(expected, actual);
         }
 
 
-
+        
         private static string NameVal() => "'SeattleWA'";
         
         private static int IntVal() => 4;
         
         private static DateTime? DatetimeVal() => new DateTime(2017, 1, 1);
+
+        private static DateTimeOffset? DateTimeOffsetNullVal() => null;
     }
 
     public class testClass
     {
+        public DateTimeOffset? DtoField;
         public int field;
         public int method(int parameter)
         {
