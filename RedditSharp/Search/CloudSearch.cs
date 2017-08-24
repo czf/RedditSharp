@@ -10,22 +10,49 @@ namespace RedditSharp.Search
     /// <summary>
     /// https://github.com/reddit/reddit/blob/master/r2/r2/lib/providers/search/common.py
     /// http://awsdocs.s3.amazonaws.com/cloudsearch/2011-02-01/cloudsearch-dg-2011-02-01.pdf
-    /// https://www.reddit.com/search?q=%28and+subreddit:%27SeattleWA%27+flair_text:%27government%27+ups:5..%29&sort=top&syntax=cloudsearch
-    /// https://www.reddit.com/search?q=%28and+subreddit%3A%27seattle%27+%28not+is_self%3A1%29+ups%3A5..+ups%3A..20%29&sort=top&syntax=cloudsearch
+    /// https://www.reddit.com/search?bq=%28and+subreddit:%27SeattleWA%27+flair_text:%27government%27+ups:5..%29&sort=top&syntax=cloudsearch
+    /// https://www.reddit.com/search?bq=%28and+subreddit%3A%27seattle%27+%28not+is_self%3A1%29+ups%3A5..+ups%3A..20%29&sort=top&syntax=cloudsearch
     /// https://www.reddit.com/r/MusicGuides/search?rank=title&q=ups%3A{1,3}+is_self%3A1&restrict_sr=on&syntax=cloudsearch
     /// https://www.reddit.com/r/MusicGuides/search?rank=title&q=is_self%3A1&restrict_sr=on&syntax=cloudsearch
     /// 
+    /// 
+    /// 
+    /// 
+    /// updated search info from 3months ago:
+    /// https://www.reddit.com/r/changelog/comments/694o34/reddit_search_performance_improvements/dh3tcqj/
+    /// 
     /// NOTE int ranges are <intfIeld>:<lowerbound>..<upperbound> not the bracket syntax that AWS docs list
     /// </summary>
-    public class SimpleCloudSearchFilter
+    public class SimpleLinkCloudSearchFilter
     {
         public string title;
-        public string subreddit;
+        ///public string subreddit;  //https://www.reddit.com/r/redditdev/comments/69kiof/time_based_searching_seems_to_be_broken/dh9dizc/
+        public string reddit;
         public string flair_text;
+        public string flair_css_class;
         public string author;
+        //public string author_fullname;
+        //public string fullname;
+        public string site;
+        public string selftext;
+        public string url;
+
+        /// <summary>
+        /// not sure on this one
+        /// </summary>
+        public int type_id;
+        
+
         
         public int ups;
+        public int downs;
+        public int num_comments;
+        /// <summary>
+        /// ???? from github source self.link.sr_id
+        /// </summary>
+        public int sr_id;
         public bool over18;
+        public bool is_self;
 
         
         /// <summary>
@@ -39,13 +66,13 @@ namespace RedditSharp.Search
             return true;
         }
         
-        public static string Filter(Expression<Func<SimpleCloudSearchFilter, bool>> expression)
+        public static string Filter(Expression<Func<SimpleLinkCloudSearchFilter, bool>> expression)
         {
             var x = FilterCallBinder(expression.Body);
 
             return x;
         }
-        public static string Filter(Expression<Func<SimpleCloudSearchFilter, bool>> expression, Expression<Func<SimpleCloudSearchFilter, bool>> expression2, Expression<Func<SimpleCloudSearchFilter, bool>> expression3, Expression<Func<SimpleCloudSearchFilter, bool>> expression4)
+        public static string Filter(Expression<Func<SimpleLinkCloudSearchFilter, bool>> expression, Expression<Func<SimpleLinkCloudSearchFilter, bool>> expression2, Expression<Func<SimpleLinkCloudSearchFilter, bool>> expression3, Expression<Func<SimpleLinkCloudSearchFilter, bool>> expression4)
         {
             var x = FilterCallBinder(expression4.Body);
 
@@ -160,7 +187,7 @@ namespace RedditSharp.Search
             string from = null;
             string end = null;
             string result = string.Empty;
-            if(call.Method.Name == nameof(SimpleCloudSearchFilter.timestamp))
+            if(call.Method.Name == nameof(SimpleLinkCloudSearchFilter.timestamp))
             {
                 from = FilterCallBinder(call.Arguments[0], true);
                 end = FilterCallBinder(call.Arguments[1], true);
@@ -205,12 +232,12 @@ namespace RedditSharp.Search
         private static bool IsCorrectOrder(BinaryExpression expression)
         {
             MemberExpression member = expression.Left as MemberExpression;
-            bool leftIsSearchProperty = member != null && (member.Member.DeclaringType == typeof(SimpleCloudSearchFilter));
+            bool leftIsSearchProperty = member != null && (member.Member.DeclaringType == typeof(SimpleLinkCloudSearchFilter));
             bool rightIsSearchProperty = false;
             if (!leftIsSearchProperty)
             {
                 member = expression.Right as MemberExpression;
-                rightIsSearchProperty = member != null && (member.Member.DeclaringType == typeof(SimpleCloudSearchFilter));
+                rightIsSearchProperty = member != null && (member.Member.DeclaringType == typeof(SimpleLinkCloudSearchFilter));
             }
             return leftIsSearchProperty || (!leftIsSearchProperty && !rightIsSearchProperty);
 
@@ -253,7 +280,7 @@ namespace RedditSharp.Search
                 result = $"{member.Member.Name}:{(filterValue ? "1" : "0")}";
             }
 
-            else if (member.Member.DeclaringType != typeof(SimpleCloudSearchFilter))
+            else if (member.Member.DeclaringType != typeof(SimpleLinkCloudSearchFilter))
             {
                 object data = member.InvokeGet();
 
